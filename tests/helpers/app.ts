@@ -110,11 +110,21 @@ export function createTestApp(opts: { path?: string; start?: number | string; cl
       return stopped.body.data;
     },
 
-    /** Simulates a process restart: close the connection, open a new one on the same file. */
-    restart() {
+    /** Closes the connection; nothing of this "process" is left in memory. */
+    shutdown() {
       db.close();
+    },
+
+    /** Starts a new "process": a new connection and container on the same database file. */
+    boot() {
       db = openDatabase(path);
       container = createContainer({ db, clock, logger: log.logger });
+    },
+
+    /** Simulates a process restart: close the connection, open a new one on the same file. */
+    restart() {
+      app.shutdown();
+      app.boot();
     },
 
     close() {
