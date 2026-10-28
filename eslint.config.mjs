@@ -22,5 +22,10 @@ export default defineConfig([
     files: ['src/client/**/*.{ts,tsx}', 'app/**/*.tsx'],
     rules: { 'no-restricted-imports': ['error', serverImportBan] },
   },
+  {
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
   globalIgnores(['.next/**', 'out/**', 'build/**', 'next-env.d.ts', 'data/**', 'coverage/**']),
 ]);
