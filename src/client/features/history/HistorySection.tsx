@@ -20,6 +20,8 @@ import {
 } from '../../components/icons';
 
 const PAGE_SIZE = 25;
+/** The API's largest page: the export reads the whole result in as few requests as possible. */
+const EXPORT_PAGE_SIZE = 500;
 
 type GroupBy = 'date' | 'employee' | 'none';
 type Layout = 'list' | 'grid';
@@ -36,6 +38,20 @@ type Props = {
   revision: number;
   onStartTimer: () => void;
 };
+
+function boundsOf(fromDate: string, toDate: string) {
+  return {
+    from: fromDate ? (dateRangeToInstants(fromDate, fromDate)?.from ?? undefined) : undefined,
+    to: toDate ? (dateRangeToInstants(toDate, toDate)?.to ?? undefined) : undefined,
+  };
+}
+
+/** Time worked; a running entry counts up to `serverNow`. Clamped: a browser clock behind the server's must not make it negative. */
+function spanOf(entry: TimeEntry, serverNow: number): Row {
+  const endMs = entry.endedAt === null ? serverNow : Date.parse(entry.endedAt);
+  const span = endMs - Date.parse(entry.startedAt);
+  return { entry, endMs, durationMs: Number.isFinite(span) ? Math.max(0, span) : 0 };
+}
 
 /** Groups keep the server's order (newest first); a group sits where its first entry appears. */
 function groupRows(rows: Row[], by: GroupBy, labels: Map<string, string>): Group[] {
@@ -63,20 +79,24 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
   const [groupBy, setGroupBy] = useState<GroupBy>('date');
   const [layout, setLayout] = useState<Layout>('list');
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const now = useNow();
+  const [exportState, setExportState] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
+  const exporting = useRef(false); // blocks a second click before React re-renders
 
-  const rangeError = fromDate && toDate && fromDate > toDate ? 'The start date must not be after the end date.' : null;
+  // <input type="date"> also accepts years like 0050 that the range conversion rejects: say so instead of ignoring the bound.
+  const invalidDate = (fromDate && !dateRangeToInstants(fromDate, fromDate)) || (toDate && !dateRangeToInstants(toDate, toDate));
+  const rangeError = invalidDate
+    ? 'Enter valid dates.'
+    : fromDate && toDate && fromDate > toDate
+      ? 'The start date must not be after the end date.'
+      : null;
 
   const load = useCallback(async (): Promise<TimeEntryPage | null> => {
     void revision; // a new revision means "fetch again"
     if (rangeError) return null;
-    const range = {
-      from: fromDate ? (dateRangeToInstants(fromDate, fromDate)?.from ?? undefined) : undefined,
-      to: toDate ? (dateRangeToInstants(toDate, toDate)?.to ?? undefined) : undefined,
-    };
-    return api.listEntries({ employeeId: employeeId || undefined, ...range, limit: PAGE_SIZE, offset });
+    return api.listEntries({ employeeId: employeeId || undefined, ...boundsOf(fromDate, toDate), limit: PAGE_SIZE, offset });
   }, [employeeId, fromDate, toDate, offset, rangeError, revision]);
   const page = useResource(load);
+  const now = useNow(1000, page.data?.entries.some((e) => e.endedAt === null) ?? false);
 
   const filtered = Boolean(employeeId || fromDate || toDate);
   const clearFilters = () => {
@@ -97,10 +117,8 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
   const last = Math.min(offset + PAGE_SIZE, total);
 
   const serverNow = now + serverOffsetMs;
-  const rows: Row[] = entries.map((entry) => {
-    const endMs = entry.endedAt === null ? serverNow : Date.parse(entry.endedAt);
-    return { entry, endMs, durationMs: endMs - Date.parse(entry.startedAt) };
-  });
+  const rows = entries.map((entry) => spanOf(entry, serverNow));
+  const partialGroups = total > entries.length; // some of a group's entries may be on another page
   const groups = groupRows(rows, groupBy, labels);
   const showDate = groupBy !== 'date';
 
@@ -111,18 +129,41 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
       return next;
     });
 
-  function exportCsv() {
-    const table = [
-      ['Employee', 'Task', 'Start', 'End', 'Duration'],
-      ...rows.map(({ entry, durationMs }) => [
-        labelOf(labels, entry.employeeId, entry.employeeName),
-        entry.description,
-        entry.startedAt,
-        entry.endedAt ?? '',
-        formatDuration(durationMs),
-      ]),
-    ];
-    downloadCsv(`timesheet-${todayLocal()}.csv`, toCsv(table));
+  /** Exports everything the current filters match, not just the page on screen. */
+  async function exportCsv() {
+    if (exporting.current) return;
+    exporting.current = true;
+    setExportState({ busy: true, error: null });
+    try {
+      const all = new Map<string, TimeEntry>(); // by id: an entry added meanwhile can shift later pages
+      for (let at = 0; ; at += EXPORT_PAGE_SIZE) {
+        const batch = await api.listEntries({
+          employeeId: employeeId || undefined,
+          ...boundsOf(fromDate, toDate),
+          limit: EXPORT_PAGE_SIZE,
+          offset: at,
+        });
+        for (const entry of batch.entries) all.set(entry.id, entry);
+        if (batch.entries.length === 0 || at + batch.entries.length >= batch.total) break;
+      }
+      const exportNow = Date.now() + serverOffsetMs;
+      const table = [
+        ['Employee', 'Task', 'Start', 'End', 'Duration'],
+        ...[...all.values()].map((entry) => [
+          labelOf(labels, entry.employeeId, entry.employeeName),
+          entry.description,
+          entry.startedAt,
+          entry.endedAt ?? '',
+          formatDuration(spanOf(entry, exportNow).durationMs),
+        ]),
+      ];
+      downloadCsv(`timesheet-${todayLocal()}.csv`, toCsv(table));
+      setExportState({ busy: false, error: null });
+    } catch (err) {
+      setExportState({ busy: false, error: messageOf(err) });
+    } finally {
+      exporting.current = false;
+    }
   }
 
   const cells = (row: Row) => {
@@ -152,17 +193,23 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
     };
   };
 
+  const keyOf = (group: Group) => `${groupBy}:${group.key}`;
+
   const bar = (group: Group): ReactNode => {
     if (group.label === null) return null;
-    const key = `${groupBy}:${group.key}`;
+    const key = keyOf(group);
     const isCollapsed = collapsed.has(key);
     const count = group.rows.length;
     return (
       <div className="group-bar">
         <span className="group-title">{group.label}</span>
         <span className="group-count">{count === 1 ? '1 item' : `${count} items`}</span>
-        <span className="group-total" aria-label={`Total for ${group.label}`}>
-          {formatDuration(group.totalMs)}
+        <span className="group-end">
+          {partialGroups && <span className="group-note">on this page</span>}
+          <span className="group-total">
+            <span className="sr-only">Total for {group.label}: </span>
+            {formatDuration(group.totalMs)}
+          </span>
         </span>
         <button
           type="button"
@@ -193,9 +240,9 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
               Grid
             </button>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={exportCsv} disabled={entries.length === 0}>
+          <button type="button" className="btn btn-secondary" onClick={exportCsv} disabled={entries.length === 0 || page.loading || exportState.busy}>
             <DownloadIcon />
-            Export
+            {exportState.busy ? 'Exporting…' : 'Export'}
           </button>
           <button type="button" className="btn" onClick={onStartTimer}>
             <PlusIcon />
@@ -297,6 +344,11 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
           </div>
         </form>
       </div>
+      {exportState.error && (
+        <p className="status status-error" role="alert">
+          Export failed: {exportState.error}
+        </p>
+      )}
       {rangeError && (
         <p id="history-to-error" className="field-error" role="alert">
           {rangeError}
@@ -326,7 +378,7 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
                 </tr>
               </thead>
               {groups.map((group) => {
-                const isCollapsed = collapsed.has(`${groupBy}:${group.key}`);
+                const isCollapsed = collapsed.has(keyOf(group));
                 return (
                   <tbody key={group.key}>
                     {group.label !== null && (
@@ -356,7 +408,7 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
           ) : (
             <div className="groups">
               {groups.map((group) => {
-                const isCollapsed = collapsed.has(`${groupBy}:${group.key}`);
+                const isCollapsed = collapsed.has(keyOf(group));
                 return (
                   <Fragment key={group.key}>
                     {bar(group)}
@@ -386,13 +438,13 @@ export function HistorySection({ employees, labels, serverOffsetMs, revision, on
             </div>
           )}
           <nav className="pager" aria-label="History pages">
-            <button type="button" className="btn btn-secondary" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
+            <button type="button" className="btn btn-secondary" disabled={offset === 0 || page.loading} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>
               Previous
             </button>
             <span>
               {first}–{last} of {total}
             </span>
-            <button type="button" className="btn btn-secondary" disabled={last >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>
+            <button type="button" className="btn btn-secondary" disabled={last >= total || page.loading} onClick={() => setOffset(offset + PAGE_SIZE)}>
               Next
             </button>
           </nav>
@@ -449,6 +501,7 @@ function GroupByMenu({ value, onChange }: { value: GroupBy; onChange: (next: Gro
             onClick={() => {
               onChange(option);
               setOpen(false);
+              ref.current?.querySelector('summary')?.focus(); // the clicked button is about to be hidden
             }}
           >
             {GROUP_LABELS[option]}

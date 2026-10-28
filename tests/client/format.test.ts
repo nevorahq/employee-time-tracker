@@ -29,6 +29,8 @@ describe('CSV', () => {
     expect(csvCell('+1')).toBe("'+1");
     expect(csvCell('-2')).toBe("'-2");
     expect(csvCell('@SUM(A1)')).toBe("'@SUM(A1)");
+    expect(csvCell('\tx')).toBe("'\tx");
+    expect(csvCell('\rx')).toBe("\"'\rx\"");
   });
 
   it('joins rows with CRLF and ends with one', () => {

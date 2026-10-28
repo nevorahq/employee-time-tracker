@@ -94,7 +94,9 @@ p + p {
   flex-direction: column;
   gap: 24px;
   height: 100vh;
+  height: 100dvh;
   padding: 16px;
+  overflow-y: auto;
   background: var(--surface-2);
   border-right: 1px solid var(--border);
 }
@@ -526,6 +528,11 @@ select[aria-invalid='true'] {
   border-color: var(--accent);
 }
 
+.control:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .control .icon {
   width: 18px;
   height: 18px;
@@ -807,8 +814,20 @@ select[aria-invalid='true'] {
   white-space: nowrap;
 }
 
-.group-total {
+.group-end {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
   margin-left: auto;
+}
+
+.group-note {
+  color: var(--muted);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.group-total {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -912,11 +931,11 @@ select[aria-invalid='true'] {
   margin: 0 0 2px;
 }
 
-.timer-who {
+.timer-info .timer-who {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 6px !important;
+  margin-bottom: 6px;
   font-weight: 600;
 }
 

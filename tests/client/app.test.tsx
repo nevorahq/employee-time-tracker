@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TimeTrackerApp } from '../../src/client/TimeTrackerApp.tsx';
 import { employee, entry } from '../helpers/dom.tsx';
 import { deferred, fail, installFakeFetch, ok, type FakeHandler } from '../helpers/fake-fetch.ts';
@@ -10,6 +10,10 @@ const BOB = employee('22222222-2222-4222-8222-222222222222', 'Bob Sample');
 
 const section = (name: string) => within(screen.getByRole('region', { name }));
 const MIN = 60_000;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('Employees section', () => {
   it('shows an inline error for a blank name and sends nothing', async () => {
@@ -358,7 +362,7 @@ describe('Timesheet section', () => {
     await history.findByText('Finished task');
 
     expect(history.getAllByText('1 item')).toHaveLength(2);
-    expect(history.getByLabelText(/Total for .*27 Oct 2026/).textContent).toBe('1:30:00');
+    expect(history.getByText(/Total for .*27 Oct 2026/).parentElement!.textContent).toContain('1:30:00');
 
     const collapse = history.getByRole('button', { name: /Collapse .*27 Oct 2026/ });
     expect(collapse.getAttribute('aria-expanded')).toBe('true');
@@ -423,9 +427,10 @@ describe('Timesheet section', () => {
     await waitFor(() => expect(net.requests('GET', '/api/time-entries').at(-1)!.query.get('employeeId')).toBeNull());
   });
 
-  it('exports what is on screen as a CSV file', async () => {
+  it('exports the entries as a CSV file', async () => {
     twoDays();
     const created: Blob[] = [];
+    // revokeObjectURL stays defined: the download helper calls it from a timer after the test ends.
     Object.assign(URL, { createObjectURL: (blob: Blob) => (created.push(blob), 'blob:test'), revokeObjectURL: () => {} });
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
     render(<TimeTrackerApp />);
@@ -433,14 +438,128 @@ describe('Timesheet section', () => {
     await history.findByText('Finished task');
 
     fireEvent.click(history.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(created).toHaveLength(1));
 
     expect(click).toHaveBeenCalledOnce();
     const text = await created[0]!.text();
     expect(text).toContain('Employee,Task,Start,End,Duration');
     expect(text).toContain('Ada Example,Finished task,2026-10-27T09:00:00.000Z,2026-10-27T10:30:00.000Z,1:30:00');
-    click.mockRestore();
-    Reflect.deleteProperty(URL, 'createObjectURL');
-    Reflect.deleteProperty(URL, 'revokeObjectURL');
+  });
+
+  it('exports every matching entry, page by page, not only the 25 on screen', async () => {
+    const all = Array.from({ length: 1200 }, (_, i) => entry({ id: `e${i}`, description: `Task ${i}`, endedAt: '2026-10-27T10:00:00.000Z', startedAt: '2026-10-27T09:00:00.000Z' }));
+    const net = installFakeFetch((req) => {
+      if (req.method === 'GET' && req.path === '/api/employees') return ok([ADA]);
+      if (req.path === '/api/time-entries') {
+        const offset = Number(req.query.get('offset') ?? 0);
+        return ok({ entries: all.slice(offset, offset + Number(req.query.get('limit'))), total: all.length });
+      }
+    });
+    const created: Blob[] = [];
+    Object.assign(URL, { createObjectURL: (blob: Blob) => (created.push(blob), 'blob:test'), revokeObjectURL: () => {} });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    render(<TimeTrackerApp />);
+    const history = section('Timesheet');
+    await history.findByText('Task 0');
+    expect(history.getAllByText('on this page').length).toBeGreaterThan(0);
+
+    fireEvent.click(history.getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(created).toHaveLength(1));
+
+    const batches = net.requests('GET', '/api/time-entries').filter((r) => r.query.get('limit') === '500');
+    expect(batches.map((r) => r.query.get('offset'))).toEqual(['0', '500', '1000']);
+    const lines = (await created[0]!.text()).trimEnd().split('\r\n');
+    expect(lines).toHaveLength(1201); // header + 1200
+    expect(new Set(lines).size).toBe(1201);
+  });
+
+  it('reports a failed export and lets the user try again', async () => {
+    installFakeFetch((req) => {
+      if (req.method === 'GET' && req.path === '/api/employees') return ok([ADA]);
+      if (req.path === '/api/time-entries') {
+        if (req.query.get('limit') === '500') return fail(500, 'INTERNAL_ERROR', 'Internal server error.');
+        return ok({ entries: [entry({ id: 'x', endedAt: '2026-10-27T10:00:00.000Z', startedAt: '2026-10-27T09:00:00.000Z' })], total: 1 });
+      }
+    });
+    render(<TimeTrackerApp />);
+    const history = section('Timesheet');
+    await history.findByText('Write report');
+
+    fireEvent.click(history.getByRole('button', { name: 'Export' }));
+
+    expect((await history.findByRole('alert')).textContent).toBe('Export failed: Internal server error.');
+    expect((history.getByRole('button', { name: 'Export' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('marks group totals "on this page" only when the result does not fit on one page', async () => {
+    twoDays();
+    const { unmount } = render(<TimeTrackerApp />);
+    await section('Timesheet').findByText('Finished task');
+    expect(section('Timesheet').queryByText('on this page')).toBeNull();
+    unmount();
+
+    installFakeFetch((req) => {
+      if (req.method === 'GET' && req.path === '/api/employees') return ok([ADA]);
+      if (req.path === '/api/time-entries') return ok({ entries: [entry({ id: 'a', endedAt: '2026-10-27T10:00:00.000Z', startedAt: '2026-10-27T09:00:00.000Z' })], total: 30 });
+    });
+    render(<TimeTrackerApp />);
+    expect(await section('Timesheet').findByText('on this page')).toBeTruthy();
+  });
+
+  it('closes the Group By menu on Escape and gives focus back to its button', async () => {
+    twoDays();
+    render(<TimeTrackerApp />);
+    const history = section('Timesheet');
+    await history.findByText('Finished task');
+    const summary = history.getByText(/Group By Date/).closest('summary')!;
+    const details = summary.parentElement as HTMLDetailsElement;
+
+    fireEvent.click(summary);
+    await waitFor(() => expect(details.open).toBe(true));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(details.open).toBe(false));
+    expect(document.activeElement).toBe(summary);
+
+    fireEvent.click(summary);
+    await waitFor(() => expect(details.open).toBe(true));
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(details.open).toBe(false));
+  });
+
+  it('says so when a date cannot be converted instead of silently dropping the bound', async () => {
+    const net = installFakeFetch();
+    render(<TimeTrackerApp />);
+    const history = section('Timesheet');
+    await history.findByText('No time entries yet.');
+    const before = net.requests('GET', '/api/time-entries').length;
+
+    fireEvent.change(history.getByLabelText('From date'), { target: { value: '0050-01-01' } });
+
+    expect(await history.findByText('Enter valid dates.')).toBeTruthy();
+    expect(net.requests('GET', '/api/time-entries').length).toBe(before);
+  });
+
+  it('never lets a running entry with a future start (browser clock behind the server) lower a total', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(new Date('2026-10-28T11:30:00Z'));
+    installFakeFetch((req) => {
+      if (req.method === 'GET' && req.path === '/api/employees') return ok([ADA]);
+      if (req.path === '/api/time-entries') {
+        return ok({
+          entries: [
+            entry({ id: 'future', description: 'Ahead of the clock', startedAt: '2026-10-28T12:30:00.000Z' }),
+            entry({ id: 'done', description: 'One hour', startedAt: '2026-10-28T08:00:00.000Z', endedAt: '2026-10-28T09:00:00.000Z' }),
+          ],
+          total: 2,
+        });
+      }
+    });
+    render(<TimeTrackerApp />);
+    const history = section('Timesheet');
+    const total = (await history.findByText(/Total for .*28 Oct 2026/)).parentElement!.textContent!;
+    expect(total).toContain('1:00:00');
+    expect(total).not.toContain('-');
+    expect(total).not.toContain('NaN');
   });
 
   it('is disabled for export while there is nothing to export', async () => {
@@ -452,6 +571,10 @@ describe('Timesheet section', () => {
 });
 
 describe('Navigation', () => {
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
   const nav = () => within(screen.getByRole('navigation', { name: 'Sections' }));
   const go = async (hash: string) => {
     await act(async () => {
@@ -472,7 +595,6 @@ describe('Navigation', () => {
 
     await go('#nonsense');
     expect(nav().getByRole('link', { name: 'Timesheet' }).getAttribute('aria-current')).toBe('page');
-    window.location.hash = '';
   });
 
   it('shows how many timers are running next to "Active Timer"', async () => {
@@ -495,7 +617,6 @@ describe('Navigation', () => {
 
     await waitFor(() => expect(document.activeElement?.id).toBe('timer-employee'));
     expect(nav().getByRole('link', { name: 'Active Timer' }).getAttribute('aria-current')).toBe('page');
-    window.location.hash = '';
   });
 });
 

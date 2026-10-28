@@ -9,14 +9,18 @@ export function csvCell(value: string): string {
 export const toCsv = (rows: readonly (readonly string[])[]): string =>
   rows.map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
 
-/** Hands `text` to the browser as a file download. The BOM keeps Excel from mangling non-ASCII names. */
+/** Byte order mark: keeps Excel from mangling non-ASCII names. */
+const BOM = '﻿';
+
+/** Hands `text` to the browser as a file download. */
 export function downloadCsv(filename: string, text: string): void {
-  const url = URL.createObjectURL(new Blob(['﻿', text], { type: 'text/csv;charset=utf-8' }));
+  const url = URL.createObjectURL(new Blob([BOM, text], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
   document.body.append(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  // Revoking right away can cancel the download in Safari and some Firefox versions.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

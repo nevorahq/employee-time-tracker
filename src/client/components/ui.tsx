@@ -23,6 +23,7 @@ export function Section({ id, title, lead, actions, children }: SectionProps) {
   );
 }
 
+/** Must match the `.avatar.tone-N` and `.task-dot.tone-N` rules in app/globals.css. */
 const TONES = 6;
 
 /** A stable colour index (0..5) for an id, shared by avatars and task dots. */

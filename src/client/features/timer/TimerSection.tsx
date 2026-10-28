@@ -27,10 +27,9 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
   const [stopping, setStopping] = useState<ReadonlySet<string>>(new Set());
   const startInFlight = useRef(false);
   const stopInFlight = useRef(new Set<string>());
-  const now = useNow();
-
   const offset = timers.data?.serverOffsetMs ?? 0;
   const active = timers.data?.timers ?? [];
+  const now = useNow(1000, active.length > 0);
   const alreadyRunning = employeeId !== '' && active.some((t) => t.employeeId === employeeId);
 
   async function start(event: FormEvent) {
