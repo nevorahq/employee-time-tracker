@@ -96,12 +96,6 @@ export const CalendarIcon = () => (
   </Icon>
 );
 
-export const FilterIcon = () => (
-  <Icon>
-    <path d="M4 7h16M7 12h10M10 17h4" />
-  </Icon>
-);
-
 export const PersonIcon = () => (
   <Icon>
     <circle cx="12" cy="8.5" r="3.5" />
