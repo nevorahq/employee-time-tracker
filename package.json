@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "test": "TZ=Europe/Chisinau vitest run",
     "check:scenarios": "node scripts/check-scenarios.mjs",
-    "test:e2e": "node tests/e2e/smoke.mjs"
+    "test:e2e": "node tests/e2e/smoke.mjs",
+    "seed": "node --experimental-strip-types scripts/seed.ts"
   },
   "dependencies": {
     "better-sqlite3": "13.0.3",
