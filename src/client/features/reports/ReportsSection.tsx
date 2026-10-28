@@ -44,8 +44,8 @@ export function ReportsSection({ employees, labels }: Props) {
   }
 
   return (
-    <Section id="reports" title="Reports">
-      <form className="form-grid form-grid-4" onSubmit={run} noValidate>
+    <Section id="reports" title="Reports" lead="Totals per employee for a period. Running timers count up to the moment of the report.">
+      <form className="form-grid form-grid-4 panel" onSubmit={run} noValidate>
         <Field id="report-from" label="Start date">
           <input id="report-from" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </Field>
@@ -82,7 +82,7 @@ function ReportResult({ report, labels }: { report: Report; labels: Map<string, 
   const hasProvisional = report.totals.provisionalMs > 0;
   return (
     <div aria-live="polite">
-      <h3>Result</h3>
+      <h3 className="subhead">Result</h3>
       {report.entries.length === 0 ? (
         <EmptyState>No time was recorded in this period. Total: {formatDuration(0)}.</EmptyState>
       ) : (
@@ -107,8 +107,8 @@ function ReportResult({ report, labels }: { report: Report; labels: Map<string, 
             </p>
           )}
 
-          <h3>By employee</h3>
-          <table className="table">
+          <h3 className="subhead">By employee</h3>
+          <table className="table timesheet">
             <thead>
               <tr>
                 <th scope="col">Employee</th>
@@ -131,8 +131,8 @@ function ReportResult({ report, labels }: { report: Report; labels: Map<string, 
             </tbody>
           </table>
 
-          <h3>Entries in the period</h3>
-          <table className="table">
+          <h3 className="subhead">Entries in the period</h3>
+          <table className="table timesheet">
             <thead>
               <tr>
                 <th scope="col">Employee</th>

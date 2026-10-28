@@ -6,7 +6,8 @@ import type { Employee } from '@/shared/types';
 import { api, type ActiveTimersSnapshot } from '../../lib/api-client';
 import { formatDateTime, formatDuration, labelOf } from '../../lib/format';
 import { useNow, type Resource } from '../../lib/hooks';
-import { Badge, EmptyState, ErrorState, Field, Loading, Section, messageOf } from '../../components/ui';
+import { PlayIcon, StopIcon } from '../../components/icons';
+import { Avatar, Badge, EmptyState, ErrorState, Field, Loading, Section, messageOf } from '../../components/ui';
 
 const LONG_RUNNING_MS = 12 * 3_600_000;
 
@@ -75,8 +76,8 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
   }
 
   return (
-    <Section id="timer" title="Active Timer">
-      <form className="form-grid" onSubmit={start} noValidate>
+    <Section id="timer" title="Active Timer" lead="Start a timer for a task and stop it when the work is done.">
+      <form className="form-grid panel" onSubmit={start} noValidate>
         <Field id="timer-employee" label="Employee" error={errors.employee}>
           <select
             id="timer-employee"
@@ -104,6 +105,7 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
           />
         </Field>
         <button type="submit" className="btn" disabled={starting || alreadyRunning}>
+          <PlayIcon />
           {starting ? 'Starting…' : 'Start'}
         </button>
       </form>
@@ -119,7 +121,7 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
         </p>
       )}
 
-      <h3>Running now</h3>
+      <h3 className="subhead">Running now</h3>
       {timers.loading && !timers.data && <Loading label="Loading active timers…" />}
       {timers.error && !timers.data && <ErrorState message={messageOf(timers.error)} onRetry={timers.reload} />}
       {timers.data && active.length === 0 && <EmptyState>No timers are running.</EmptyState>}
@@ -130,8 +132,11 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
             const who = labelOf(labels, t.employeeId, t.employeeName);
             return (
               <li key={t.id} className="timer-item">
-                <div>
-                  <p className="timer-who">{who}</p>
+                <div className="timer-info">
+                  <p className="timer-who">
+                    <Avatar name={who} seed={t.employeeId} />
+                    {who}
+                  </p>
                   <p>{t.description}</p>
                   <p className="muted">Started {formatDateTime(t.startedAt)}</p>
                   {elapsed > LONG_RUNNING_MS && (
@@ -150,6 +155,7 @@ export function TimerSection({ employees, labels, timers, onChanged, notify }: P
                   disabled={stopping.has(t.id)}
                   aria-label={`Stop timer for ${who}`}
                 >
+                  <StopIcon />
                   {stopping.has(t.id) ? 'Stopping…' : 'Stop'}
                 </button>
               </li>

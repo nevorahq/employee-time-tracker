@@ -1,4 +1,5 @@
 import type { Employee } from '@/shared/types';
+import { daysBetweenInclusive, todayLocal } from './dates';
 
 /** H:MM:SS. Whole seconds are shown; totals are never summed from these rounded values. */
 export function formatDuration(ms: number): string {
@@ -20,9 +21,21 @@ const dateTime = new Intl.DateTimeFormat('en-GB', {
 });
 const timeOnly = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+const day = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+const shortDay = new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short' });
+
 /** Local-time formatting (UI-11). */
 export const formatDateTime = (iso: string): string => dateTime.format(new Date(iso));
 export const formatTime = (iso: string): string => timeOnly.format(new Date(iso));
+export const formatDay = (iso: string): string => day.format(new Date(iso));
+export const formatShortDay = (iso: string): string => shortDay.format(new Date(iso));
+
+/** "09:23 – 12:23", "22:10 – 02:05 (+1d)" when it ends on a later local day, "10:00 – now" while running. */
+export function formatPeriod(startedAt: string, endedAt: string | null): string {
+  if (endedAt === null) return `${formatTime(startedAt)} – now`;
+  const later = daysBetweenInclusive(todayLocal(new Date(startedAt)), todayLocal(new Date(endedAt))) - 1;
+  return `${formatTime(startedAt)} – ${formatTime(endedAt)}${later > 0 ? ` (+${later}d)` : ''}`;
+}
 
 /**
  * Display names for employees. Names are not unique (FR-EMP-5), so when a name repeats,

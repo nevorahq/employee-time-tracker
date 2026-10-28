@@ -3,12 +3,58 @@ import type { ReactNode } from 'react';
 export const messageOf = (err: unknown): string =>
   err instanceof Error && err.message ? err.message : 'Something went wrong. Please try again.';
 
-export function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+type SectionProps = { id: string; title: string; lead?: string; actions?: ReactNode; children: ReactNode };
+
+/** One page of the app: a big title, an optional one-line lead and a slot for header actions. */
+export function Section({ id, title, lead, actions, children }: SectionProps) {
   return (
-    <section id={id} className="card" aria-labelledby={`${id}-title`}>
-      <h2 id={`${id}-title`}>{title}</h2>
+    <section id={id} className="page" aria-labelledby={`${id}-title`}>
+      <header className="page-head">
+        <div>
+          <h2 id={`${id}-title`} className="page-title">
+            {title}
+          </h2>
+          {lead && <p className="page-lead">{lead}</p>}
+        </div>
+        {actions && <div className="page-actions">{actions}</div>}
+      </header>
       {children}
     </section>
+  );
+}
+
+const TONES = 6;
+
+/** A stable colour index (0..5) for an id, shared by avatars and task dots. */
+export function toneOf(seed: string): number {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return hash % TONES;
+}
+
+/** Initials on a stable colour; purely decorative, the name is always printed next to it. */
+export function Avatar({ name, seed }: { name: string; seed: string }) {
+  const initials =
+    name
+      .split(/\s+/)
+      .filter((word) => /^[\p{L}\p{N}]/u.test(word))
+      .slice(0, 2)
+      .map((word) => Array.from(word)[0])
+      .join('')
+      .toUpperCase() || '?';
+  return (
+    <span className={`avatar tone-${toneOf(seed)}`} aria-hidden="true">
+      {initials}
+    </span>
+  );
+}
+
+export function StatusBadge({ running }: { running: boolean }) {
+  return (
+    <span className={`status-badge ${running ? 'status-badge-running' : 'status-badge-done'}`}>
+      <span className="status-dot" aria-hidden="true" />
+      {running ? 'In progress' : 'Completed'}
+    </span>
   );
 }
 

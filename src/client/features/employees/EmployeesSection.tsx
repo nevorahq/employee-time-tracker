@@ -6,7 +6,8 @@ import type { Employee } from '@/shared/types';
 import { api } from '../../lib/api-client';
 import { formatDateTime } from '../../lib/format';
 import type { Resource } from '../../lib/hooks';
-import { EmptyState, ErrorState, Field, Loading, Section, messageOf } from '../../components/ui';
+import { PlusIcon } from '../../components/icons';
+import { Avatar, EmptyState, ErrorState, Field, Loading, Section, messageOf } from '../../components/ui';
 
 type Props = {
   employees: Resource<Employee[]>;
@@ -49,8 +50,8 @@ export function EmployeesSection({ employees, labels, onChanged, notify }: Props
   }
 
   return (
-    <Section id="employees" title="Employees">
-      <form className="form-row" onSubmit={submit} noValidate>
+    <Section id="employees" title="Employees" lead="People whose time is tracked. Names are not unique.">
+      <form className="form-row panel" onSubmit={submit} noValidate>
         <Field id="employee-name" label="Name" error={error}>
           <input
             id="employee-name"
@@ -64,6 +65,7 @@ export function EmployeesSection({ employees, labels, onChanged, notify }: Props
           />
         </Field>
         <button type="submit" className="btn" disabled={pending}>
+          <PlusIcon />
           {pending ? 'Adding…' : 'Add employee'}
         </button>
       </form>
@@ -72,7 +74,7 @@ export function EmployeesSection({ employees, labels, onChanged, notify }: Props
       {employees.error && !employees.data && <ErrorState message={messageOf(employees.error)} onRetry={employees.reload} />}
       {employees.data && employees.data.length === 0 && <EmptyState>No employees yet. Add the first one above.</EmptyState>}
       {employees.data && employees.data.length > 0 && (
-        <table className="table">
+        <table className="table timesheet">
           <thead>
             <tr>
               <th scope="col">Name</th>
@@ -82,7 +84,12 @@ export function EmployeesSection({ employees, labels, onChanged, notify }: Props
           <tbody>
             {employees.data.map((e) => (
               <tr key={e.id}>
-                <td data-label="Name">{labels.get(e.id) ?? e.name}</td>
+                <td data-label="Name">
+                  <span className="person">
+                    <Avatar name={e.name} seed={e.id} />
+                    {labels.get(e.id) ?? e.name}
+                  </span>
+                </td>
                 <td data-label="Created">{formatDateTime(e.createdAt)}</td>
               </tr>
             ))}
