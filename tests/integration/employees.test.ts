@@ -41,6 +41,22 @@ describe('employees API', () => {
     expect(app.db.prepare('SELECT COUNT(*) AS n FROM employees').get()).toEqual({ n: 0 });
   });
 
+  it.each([
+    ['only a NUL character', '\u0000'],
+    ['a leading NUL', '\u0000Ada'],
+    ['an embedded NUL', 'Ada\u0000Lovelace'],
+    ['a trailing NUL', 'Ada\u0000'],
+    ['another control character', 'Ada\u0001'],
+    ['a newline inside', 'Ada\nLovelace'],
+  ])('[S2] rejects a name with %s with 400 instead of failing in the database', async (_label, name) => {
+    app = createTestApp();
+    const res = await app.post('/api/employees', { name });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(app.db.prepare('SELECT COUNT(*) AS n FROM employees').get()).toEqual({ n: 0 });
+    expect(app.log.errors).toEqual([]);
+  });
+
   it('accepts names at the length bounds (1 and 100 after trimming)', async () => {
     app = createTestApp();
     expect((await app.post('/api/employees', { name: 'A' })).status).toBe(201);

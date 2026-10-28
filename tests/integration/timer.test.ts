@@ -117,6 +117,28 @@ describe('timer API', () => {
     expect(countRows(app)).toBe(0);
   });
 
+  it.each([
+    ['only a NUL character', '\u0000'],
+    ['a leading NUL', '\u0000task'],
+    ['an embedded NUL', 'task\u0000x'],
+    ['another control character', 'task\u0007'],
+  ])('[S11] rejects a description with %s with 400 instead of failing in the database', async (_label, description) => {
+    app = createTestApp();
+    const ada = await app.createEmployee('Ada');
+    const res = await app.post('/api/timer/start', { employeeId: ada.id, description });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(countRows(app)).toBe(0);
+    expect(app.log.errors).toEqual([]);
+  });
+
+  it('[S11] still accepts line breaks and tabs in a description', async () => {
+    app = createTestApp();
+    const ada = await app.createEmployee('Ada');
+    const res = await app.post('/api/timer/start', { employeeId: ada.id, description: 'step 1\n\tstep 2' });
+    expect(res.status).toBe(201);
+  });
+
   it('[S11] rejects a missing description', async () => {
     app = createTestApp();
     const ada = await app.createEmployee('Ada');

@@ -5,18 +5,31 @@ export const DESCRIPTION_MAX = 500;
 export const HISTORY_DEFAULT_LIMIT = 100;
 export const HISTORY_MAX_LIMIT = 500;
 
+/**
+ * True if the text contains a C0 control character or DEL. NUL in particular must never reach SQLite:
+ * its length() stops at the first NUL, so the CHECK constraints disagree with the schema.
+ * `allowed` lists control characters that are fine for the field (e.g. line breaks in a description).
+ */
+const hasControlChars = (text: string, allowed = ''): boolean =>
+  [...text].some((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code < 0x20 || code === 0x7f) && !allowed.includes(ch);
+  });
+
 /** Trimmed first, then length-checked: the same bounds as the CHECK constraints in the database. */
 export const nameSchema = z
   .string('Name must be a string.')
   .trim()
   .min(1, 'Name is required.')
-  .max(NAME_MAX, `Name must be at most ${NAME_MAX} characters.`);
+  .max(NAME_MAX, `Name must be at most ${NAME_MAX} characters.`)
+  .refine((v) => !hasControlChars(v), 'Name must not contain control characters or line breaks.');
 
 export const descriptionSchema = z
   .string('Description must be a string.')
   .trim()
   .min(1, 'Task description is required.')
-  .max(DESCRIPTION_MAX, `Description must be at most ${DESCRIPTION_MAX} characters.`);
+  .max(DESCRIPTION_MAX, `Description must be at most ${DESCRIPTION_MAX} characters.`)
+  .refine((v) => !hasControlChars(v, '\n\r\t'), 'Description must not contain control characters.');
 
 /** UUIDs are case-insensitive; ids are stored lower-case, so normalise before they reach the database. */
 export const idSchema = z.uuid('Must be a valid UUID.').transform((id) => id.toLowerCase());
