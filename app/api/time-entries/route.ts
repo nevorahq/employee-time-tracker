@@ -1,7 +1,7 @@
-import { getContainer } from '@/server/container';
 import { timeEntryHandlers } from '@/server/handlers/timeEntries';
+import { route } from '@/server/routes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const GET = (req: Request) => timeEntryHandlers(getContainer()).list(req);
+export const GET = route((c) => timeEntryHandlers(c).list);

@@ -151,6 +151,23 @@ describe('timer API', () => {
     }
   });
 
+  it('[S4] treats UUIDs case-insensitively: an uppercase employee or timer id finds the same record', async () => {
+    app = createTestApp();
+    const ada = await app.createEmployee('Ada');
+
+    const started = await app.post('/api/timer/start', { employeeId: ada.id.toUpperCase(), description: 'Work' });
+    expect(started.status).toBe(201);
+    expect(started.body.data.employeeId).toBe(ada.id); // stored and returned in canonical lower case
+
+    const active = await app.get(`/api/timer/active?employeeId=${ada.id.toUpperCase()}`);
+    expect(active.body.data.timers).toHaveLength(1);
+
+    const stopped = await app.post(`/api/timer/${started.body.data.id.toUpperCase()}/stop`);
+    expect(stopped.status).toBe(200);
+    expect(stopped.body.data.id).toBe(started.body.data.id);
+    expect(countRows(app)).toBe(1);
+  });
+
   describe('GET /api/timer/active', () => {
     it('returns active timers with the server time, and nothing else', async () => {
       app = createTestApp({ start: '2026-10-28T09:00:00Z' });

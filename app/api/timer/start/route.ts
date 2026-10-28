@@ -1,7 +1,7 @@
-import { getContainer } from '@/server/container';
 import { timerHandlers } from '@/server/handlers/timer';
+import { route } from '@/server/routes';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const POST = (req: Request) => timerHandlers(getContainer()).start(req);
+export const POST = route((c) => timerHandlers(c).start);

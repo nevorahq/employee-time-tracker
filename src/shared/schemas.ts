@@ -18,7 +18,8 @@ export const descriptionSchema = z
   .min(1, 'Task description is required.')
   .max(DESCRIPTION_MAX, `Description must be at most ${DESCRIPTION_MAX} characters.`);
 
-export const idSchema = z.uuid('Must be a valid UUID.');
+/** UUIDs are case-insensitive; ids are stored lower-case, so normalise before they reach the database. */
+export const idSchema = z.uuid('Must be a valid UUID.').transform((id) => id.toLowerCase());
 
 const INSTANT_HELP = 'Must be an ISO 8601 instant with a UTC offset, e.g. 2026-10-28T10:00:00Z or 2026-10-28T12:00:00+02:00.';
 
