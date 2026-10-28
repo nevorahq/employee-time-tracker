@@ -49,10 +49,8 @@ const nonNegativeInt = (label: string) =>
     .pipe(z.number().int().safe());
 
 export const createEmployeeBody = z.object({ name: nameSchema });
-export type CreateEmployeeBody = z.infer<typeof createEmployeeBody>;
 
 export const startTimerBody = z.object({ employeeId: idSchema, description: descriptionSchema });
-export type StartTimerBody = z.infer<typeof startTimerBody>;
 
 export const activeTimersQuery = z.object({ employeeId: idSchema.optional() });
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { elapsedMs, overlapMs } from '../../src/server/domain/time.ts';
+import { overlapMs } from '../../src/server/domain/time.ts';
 
 const H = 3_600_000;
 // Period [10:00, 12:00) UTC on 2026-10-28, the examples from the ТЗ (section 6).
@@ -46,15 +46,5 @@ describe('overlapMs', () => {
 
   it('works in whole milliseconds without rounding', () => {
     expect(overlapMs(FROM + 1, FROM + 2, FROM, TO)).toBe(1);
-  });
-});
-
-describe('elapsedMs', () => {
-  it('is the difference between now and start', () => {
-    expect(elapsedMs(1_000, 4_500)).toBe(3_500);
-  });
-
-  it('never goes negative if the clock is behind the start', () => {
-    expect(elapsedMs(5_000, 1_000)).toBe(0);
   });
 });
